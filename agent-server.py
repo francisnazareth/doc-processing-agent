@@ -94,7 +94,7 @@ def create_agent_client():
         thread = agents_client.threads.create()  
 
         # Create the ticket prompt
-        prompt = input("\nWhat's the support problem you need to resolve?: ")
+        prompt = '{"ticket_id": "12345", "description": "The application crashes when I try to upload a file. This is preventing me from completing my work and needs immediate attention."}'
             
         # Send a prompt to the agent
         message = agents_client.messages.create(
@@ -126,4 +126,3 @@ def create_agent_client():
 
 if __name__ == '__main__':
     app.run()
-
