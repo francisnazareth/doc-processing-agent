@@ -6,6 +6,7 @@ from dotenv import load_dotenv
 from azure.ai.agents import AgentsClient
 from azure.ai.agents.models import ConnectedAgentTool, MessageRole, ListSortOrder, ToolSet, FunctionTool
 from azure.identity import DefaultAzureCredential
+from user_functions import user_functions
 
 app = Flask(__name__)
 
@@ -20,22 +21,17 @@ def handle_post():
     if qidFile:
         print(f"Received file: {qidFile.filename}")
         qidFile.save(f"./uploads/{qidFile.filename}")
-        create_agent_client()
+        create_agent_client(qidFile.filename)
 
-    username = request.form.get('username')
-    password = request.form.get('password')
     return render_template('thanks.html', filename=qidFile.filename)
 
-def create_agent_client():
+def create_agent_client(filename:str):
     # Function to create and return an agent client
  
     # Load environment variables from .env file
     load_dotenv()
     project_endpoint = os.getenv("PROJECT_ENDPOINT")
     model_deployment = os.getenv("MODEL_DEPLOYMENT_NAME")
-
-    print(f"Project Endpoint: {project_endpoint}")
-    print(f"Model Deployment: {model_deployment}")
 
     # Connect to the agents client
     agents_client = AgentsClient(
@@ -47,46 +43,23 @@ def create_agent_client():
     )
 
     with agents_client:
-        # Create an agent to extract content from documents. 
-        doc_handling_agent_name = "doc_handling_agent"
-        doc_handling_agent_instructions = """
-        Assess how urgent a ticket is based on its description.
 
-        Respond with one of the following levels:
-        - High: User-facing or blocking issues
-        - Medium: Time-sensitive but not breaking anything
-        - Low: Cosmetic or non-urgent tasks
+        functions = FunctionTool(user_functions)
+        toolset = ToolSet()
+        toolset.add(functions)
+        agents_client.enable_auto_function_calls(toolset)
 
-        Only output the urgency level and a very brief explanation.
-        """
-
-        doc_handling_agent = agents_client.create_agent(
-            model=model_deployment,
-            name=doc_handling_agent_name,
-            instructions=doc_handling_agent_instructions
-        )
-
-        # Create connected agent tools for the support agents
-        doc_handling_agent_tool = ConnectedAgentTool(
-            id=doc_handling_agent.id, 
-            name=doc_handling_agent_name, 
-            description="Assess the priority of a ticket"
-        )
-
-            # Create an agent to triage support ticket processing by using connected agents
+        # Create an agent to triage support ticket processing by using connected agents
         triage_agent_name = "triage-agent"
         triage_agent_instructions = """
-        Triage the given ticket. Use the connected tools to determine the ticket's priority, 
-        which team it should be assigned to, and how much effort it may take.
+        Get the uploaded file contents and file name. Use the connected tools to invoke the content understanding API. Pass the file name and file contents to the API, and get the results.
         """
         
         triage_agent = agents_client.create_agent(
             model=model_deployment,
             name=triage_agent_name,
             instructions=triage_agent_instructions,
-            tools=[
-                doc_handling_agent_tool.definitions[0]
-            ]
+            toolset=toolset
         )
 
         # Use the agents to triage a support issue
@@ -94,14 +67,16 @@ def create_agent_client():
         thread = agents_client.threads.create()  
 
         # Create the ticket prompt
-        prompt = '{"ticket_id": "12345", "description": "The application crashes when I try to upload a file. This is preventing me from completing my work and needs immediate attention."}'
+        prompt = '{"fileName": ' + filename + ' "fileConents": "abc23423242342"}'
+        print(f"Prompt: {prompt}")
+
             
         # Send a prompt to the agent
         message = agents_client.messages.create(
             thread_id=thread.id,
             role=MessageRole.USER,
             content=prompt,
-        )   
+        ) 
             
         # Run the thread usng the primary agent
         print("\nProcessing agent thread. Please wait.")
@@ -121,8 +96,6 @@ def create_agent_client():
         print("Cleaning up agents:")
         agents_client.delete_agent(triage_agent.id)
         print("Deleted triage agent.")
-        agents_client.delete_agent(doc_handling_agent.id)
-        print("Deleted document handling agent.")
 
 if __name__ == '__main__':
     app.run()

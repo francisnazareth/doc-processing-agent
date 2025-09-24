@@ -1,0 +1,4 @@
+Support ticket: 88c2f6
+Submitted by: user@example.com
+Description:
+The application crashes when I try to upload a file. This is preventing me from completing my work and needs immediate attention.
